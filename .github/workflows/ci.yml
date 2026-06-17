@@ -17,9 +17,12 @@ jobs:
       - name: Install Qt5
         run: |
           sudo apt-get update
-          sudo apt-get install -y qtbase5-dev qtbase5-dev-tools g++ make
+          # qttools5-dev-tools даёт lrelease/lupdate (нужны для embed_translations);
+          # в qtbase5-dev-tools их нет.
+          sudo apt-get install -y qtbase5-dev qtbase5-dev-tools qttools5-dev-tools g++ make
           export QT_SELECT=qt5
           qmake --version
+          lrelease -version
 
       - name: Build
         run: |
