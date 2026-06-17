@@ -533,7 +533,20 @@ void MainWindow::batchProcess()
         ++count;
     }
 
-    setModified(true);
+    // Автосохранение словаря: без него анонимизированный результат необратим.
+    // Если путь словаря уже задан — пишем туда; иначе кладём файл по умолчанию
+    // в каталог вывода (рядом с анонимизированными файлами).
+    QString dictMsg;
+    try {
+        if (m_dictPath.isEmpty())
+            m_dictPath = QDir(outDir).filePath(QStringLiteral("anonymizer_dict.json"));
+        m_store.save(m_dictPath.toStdString(), m_dict);
+        setModified(false);
+        dictMsg = tr("Dictionary saved: %1").arg(m_dictPath);
+    } catch (const std::exception& e) {
+        setModified(true);   // оставляем пометку несохранённого
+        dictMsg = tr("Could not save dictionary:\n%1").arg(e.what());
+    }
     updateDictStats();
 
     QMessageBox::information(this, tr("Batch complete"),
@@ -542,7 +555,8 @@ void MainWindow::batchProcess()
             .arg(count)
             .arg(static_cast<int>(m_dict.names().size()))
             .arg(static_cast<int>(m_dict.strings().size()))
-            .arg(static_cast<int>(m_dict.scrub().size())));
+            .arg(static_cast<int>(m_dict.scrub().size()))
+        + "\n\n" + dictMsg);
 }
 
 // ---------------------------------------------------------------------------

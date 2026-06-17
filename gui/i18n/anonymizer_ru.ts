@@ -307,5 +307,11 @@ Continue?</source>
 
 Продолжить?</translation>
     </message>
+    <message>
+        <source>Could not save dictionary:
+%1</source>
+        <translation>Не удалось сохранить словарь:
+%1</translation>
+    </message>
 </context>
 </TS>
