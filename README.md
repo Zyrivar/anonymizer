@@ -50,7 +50,7 @@ mingw32-make check      # собрать и прогнать оба набора
 | Цель        | Что это                                   |
 |-------------|-------------------------------------------|
 | `anonctl`   | GUI-приложение (Qt5 Widgets)              |
-| `test_unit` | юнит-тесты доменного ядра (29 проверок)   |
+| `test_unit` | юнит-тесты доменного ядра (32 проверки)   |
 | `test_e2e`  | end-to-end тесты (71 проверка)            |
 
 **Qt Creator:** открыть `anonymizer.pro`, кит «Desktop Qt 5.15.2 MinGW 64-bit».
@@ -157,8 +157,9 @@ domain::Dictionary loaded = store.load("dict.json");
 mingw32-make check      # собирает и гоняет оба набора
 ```
 
-- **test_unit** (29 проверок) — use-cases через фасад: round-trip, идемпотентность,
-  preserve-list, extern-трекинг, leak-детекция, format-режим, JSON round-trip словаря.
+- **test_unit** (32 проверки) — use-cases через фасад: round-trip, идемпотентность,
+  preserve-list (в т.ч. внешний инжектируемый), extern-трекинг, leak-детекция,
+  format-режим, JSON round-trip словаря.
 - **test_e2e** (71 проверка) — реалистичный SCADA-исходник ~335 строк через полный
   конвейер: анонимизация, восстановление, аудит утечек, межфайловая консистентность.
 

@@ -7,19 +7,27 @@
 #include "application/Anonymizer.h"
 #include "application/Deanonymizer.h"
 #include "application/LeakAuditor.h"
+#include "domain/Policies.h"
 #include "infrastructure/TreeSitterParser.h"
 #include <memory>
+#include <utility>
 
 namespace application {
 
 class AnonymizerService {
 public:
-    AnonymizerService()
-        : parser_(std::make_unique<infrastructure::TreeSitterParser>())
+    // Конструктор с внешним preserve-списком (DI-шов): список сохраняемых имён
+    // больше не зашит в composition root — его можно задать из GUI, теста или
+    // загрузить из конфига и передать сюда.
+    explicit AnonymizerService(domain::PreserveList preserve)
+        : parser_(std::make_unique<infrastructure::TreeSitterParser>(std::move(preserve)))
         , anonymizer_(*parser_)
         , deanonymizer_(*parser_)
         , auditor_(*parser_)
     {}
+
+    // По умолчанию — встроенный preserve-список (библиотечные/общие имена).
+    AnonymizerService() : AnonymizerService(domain::PreserveList{}) {}
 
     std::string anonymize(const std::string& src, domain::Dictionary& dict,
                           StringMode mode = StringMode::Opaque) {

@@ -253,6 +253,31 @@ const char* host = "192.168.0.1";
     EXPECT_EQ(r1, src);
 }
 
+// ─── DI-шов: внешний preserve-список уважается ──────────────────────
+
+void test_custom_preserve_list() {
+    const std::string src = "int ScadaTag = 0;\n";
+
+    // Контроль: без кастомного списка имя анонимизируется.
+    {
+        AnonymizerService svc;
+        Dictionary d;
+        std::string anon = svc.anonymize(src, d);
+        EXPECT_TRUE(anon.find("ScadaTag") == std::string::npos);
+    }
+
+    // С инжектированным preserve-списком имя сохраняется.
+    {
+        domain::PreserveList preserve;   // дефолтные имена + наше
+        preserve.add("ScadaTag");
+        AnonymizerService svc(preserve);
+        Dictionary d;
+        std::string anon = svc.anonymize(src, d);
+        EXPECT_TRUE(anon.find("ScadaTag") != std::string::npos);
+        EXPECT_TRUE(d.names().count("ScadaTag") == 0);
+    }
+}
+
 // ─── main ───────────────────────────────────────────────────────────
 
 int main() {
@@ -272,6 +297,7 @@ int main() {
     test_dict_empty_initially();
     test_extern_tracked();
     test_dict_json_roundtrip();
+    test_custom_preserve_list();
 
     fprintf(stderr, "\n=== core tests: %d/%d passed ===\n",
             tests_passed, tests_run);
