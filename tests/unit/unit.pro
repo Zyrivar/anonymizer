@@ -6,5 +6,10 @@ CONFIG  += console
 CONFIG  -= app_bundle
 QT      -= core gui
 
+# testcase: даёт цель `make check`, которая собирает и запускает бинарь
+# (кроссплатформенно — сама учитывает подпапку release/ и расширение .exe).
+CONFIG  += testcase
+testcase.timeout = 120
+
 include(../../common.pri)
 SOURCES += test_core.cpp

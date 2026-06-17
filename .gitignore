@@ -1,6 +1,5 @@
 # --- Каталоги сборки ---
-build/
-build_cc/
+build*/
 *-Debug/
 *-Release/
 

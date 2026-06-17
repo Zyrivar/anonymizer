@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Основная задача: Linux + Qt5 из apt. Быстрая и стабильная.
+  linux:
+    name: Ubuntu (Qt5, gcc)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt5
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev qtbase5-dev-tools g++ make
+          export QT_SELECT=qt5
+          qmake --version
+
+      - name: Build
+        run: |
+          export QT_SELECT=qt5
+          qmake
+          make -j$(nproc)
+
+      - name: Test (unit + e2e)
+        run: |
+          export QT_SELECT=qt5
+          make check
+
+  # Совпадает с рабочим окружением разработчика: Windows + MinGW.
+  windows:
+    name: Windows (Qt 5.15.2, MinGW 64-bit)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 5.15.2 + MinGW
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: windows
+          target: desktop
+          arch: win64_mingw81
+          tools: 'tools_mingw90'
+          add-tools-to-path: true
+          cache: true
+
+      - name: Build
+        shell: cmd
+        run: |
+          qmake
+          mingw32-make -j2
+
+      - name: Test (unit + e2e)
+        shell: cmd
+        run: mingw32-make check

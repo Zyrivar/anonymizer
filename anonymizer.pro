@@ -18,9 +18,9 @@ SUBDIRS = gui unit e2e
 unit.subdir = tests/unit
 e2e.subdir  = tests/e2e
 
-# Консольный запуск всех тестов одной командой: `make check`
-check.CONFIG  = recursive
-check.commands = \
-    cd $$shell_path($$OUT_PWD/tests/unit) && $(MAKE) && ./test_unit && \
-    cd $$shell_path($$OUT_PWD/tests/e2e)  && $(MAKE) && ./test_e2e
+# Консольный запуск всех тестов одной командой: `make check`.
+# Рекурсивно вызывает `check` в подпроектах. test_unit/test_e2e помечены
+# CONFIG+=testcase → их check собирает и запускает бинарь (кроссплатформенно,
+# с учётом release/ и .exe); у gui check — no-op (только сборка).
+check.CONFIG = recursive
 QMAKE_EXTRA_TARGETS += check
