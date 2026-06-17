@@ -59,3 +59,21 @@ jobs:
       - name: Test (unit + e2e)
         shell: cmd
         run: mingw32-make check
+
+      # Готовое приложение: anonctl.exe + Qt DLL/плагины + рантайм MinGW.
+      # Без флага --release: он на этой версии windeployqt ломает поиск плагина
+      # платформы. Рантайм MinGW подхватывается из PATH автоматически.
+      # UI-перевод (ru) встроен в ресурсы exe, поэтому Qt-переводы не нужны.
+      - name: Package anonctl (standalone)
+        shell: cmd
+        run: |
+          mkdir dist
+          copy gui\release\anonctl.exe dist\
+          windeployqt --no-translations dist\anonctl.exe
+
+      - name: Upload anonctl artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: anonctl-windows-x64
+          path: dist
+          if-no-files-found: error

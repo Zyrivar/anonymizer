@@ -59,6 +59,11 @@ mingw32-make check      # собрать и прогнать оба набора
 **windeployqt** встроен в `gui.pro` как post-build шаг: копирует Qt DLL и
 `platforms/qwindows.dll` рядом с `anonctl.exe`, иначе exe не стартует вне Creator.
 
+**Готовая сборка:** CI на каждый push собирает автономный `anonctl.exe`
+(Qt DLL + плагины + рантайм MinGW) и публикует его артефактом
+`anonctl-windows-x64` — скачать можно во вкладке **Actions** соответствующего
+запуска.
+
 > Пути сборки — без кириллицы и пробелов (MinGW плохо их переваривает).
 
 ---
