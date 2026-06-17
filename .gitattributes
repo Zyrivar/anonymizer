@@ -1,0 +1,24 @@
+# Нормализация переводов строк.
+# В репозитории всегда LF; в рабочей копии — по платформе (на Windows CRLF).
+* text=auto
+
+# Явно текстовые исходники проекта (LF в репозитории).
+*.c     text
+*.h     text
+*.cpp   text
+*.hpp   text
+*.pro   text
+*.pri   text
+*.json  text
+*.md    text
+*.py    text
+
+# Бинарные файлы — без нормализации.
+*.png   binary
+*.zip   binary
+*.exe   binary
+*.dll   binary
+*.o     binary
+
+# third_party — оставить как есть (vendored, не нормализуем).
+third_party/** -text
