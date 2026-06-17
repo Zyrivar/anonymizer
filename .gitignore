@@ -1,0 +1,34 @@
+# --- Каталоги сборки ---
+build/
+build_cc/
+*-Debug/
+*-Release/
+
+# --- Объектные/промежуточные файлы ---
+*.o
+*.obj
+moc_*
+qrc_*
+ui_*
+Makefile*
+*.exe
+*.dll
+
+# --- Бинарные цели ---
+anon
+anonctl
+test_unit
+test_e2e
+
+# --- Словари анонимизации (выходные данные) ---
+*.json
+# но НЕ vendored-грамматику tree-sitter:
+!third_party/tree-sitter-cpp/src/grammar.json
+!third_party/tree-sitter-cpp/src/node-types.json
+
+# --- Qt Creator / qmake ---
+.qtcreator/
+*.pro.user
+*.pro.user.*
+.qmake.stash
+.qtc_clangd/
