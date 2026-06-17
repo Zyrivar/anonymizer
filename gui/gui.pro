@@ -9,6 +9,12 @@ include(../common.pri)
 HEADERS += mainwindow.h
 SOURCES += main_gui.cpp mainwindow.cpp
 
+# --- Локализация UI ---
+# lrelease компилирует .ts → .qm при сборке; embed_translations встраивает
+# .qm в ресурсы (доступны как :/i18n/anonymizer_ru.qm). Русский — по умолчанию.
+TRANSLATIONS += i18n/anonymizer_ru.ts
+CONFIG += lrelease embed_translations
+
 # --- Авто-деплой Qt DLL в Windows после сборки (windeployqt) ---
 # Без этого anonctl.exe не запустится вне Qt Creator: Windows не находит
 # Qt5Core/Gui/Widgets.dll, runtime-DLL MinGW или platforms/qwindows.dll.
