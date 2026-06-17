@@ -386,15 +386,6 @@ static int countLines(const std::string& s) {
     return n;
 }
 
-// ── Хелпер: проверка, встречается ли любая из строк в тексте ────────────
-
-static bool containsAny(const std::string& text,
-                         const std::vector<std::string>& needles) {
-    for (auto& n : needles)
-        if (text.find(n) != std::string::npos) return true;
-    return false;
-}
-
 // ── Тесты ───────────────────────────────────────────────────────────────
 
 int main() {
