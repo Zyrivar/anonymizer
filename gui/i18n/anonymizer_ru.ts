@@ -291,5 +291,21 @@ Save before continuing?</source>
         <source>JSON files (*.json);;All files (*)</source>
         <translation>Файлы JSON (*.json);;Все файлы (*)</translation>
     </message>
+    <message>
+        <source>Overwrite source files?</source>
+        <translation>Перезаписать исходные файлы?</translation>
+    </message>
+    <message>
+        <source>The output directory is inside the source directory.
+Source files will be overwritten in place — this cannot be undone
+unless the dictionary is saved.
+
+Continue?</source>
+        <translation>Каталог вывода находится внутри исходного каталога.
+Исходные файлы будут перезаписаны на месте — это необратимо,
+если словарь не сохранён.
+
+Продолжить?</translation>
+    </message>
 </context>
 </TS>

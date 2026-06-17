@@ -484,6 +484,24 @@ void MainWindow::batchProcess()
         this, tr("Select output directory"), inDir);
     if (outDir.isEmpty()) return;
 
+    // Защита от записи «на месте»: если вывод совпадает с исходным каталогом
+    // или лежит внутри него, исходники будут перезаписаны. Без сохранённого
+    // словаря это необратимо — требуем явного подтверждения.
+    const QString inCanon  = QDir(inDir).canonicalPath();
+    const QString outCanon = QDir(outDir).canonicalPath();
+    const bool sameTree =
+        QString::compare(outCanon, inCanon, Qt::CaseInsensitive) == 0 ||
+        outCanon.startsWith(inCanon + QLatin1Char('/'), Qt::CaseInsensitive);
+    if (sameTree) {
+        const auto btn = QMessageBox::warning(
+            this, tr("Overwrite source files?"),
+            tr("The output directory is inside the source directory.\n"
+               "Source files will be overwritten in place — this cannot be undone\n"
+               "unless the dictionary is saved.\n\nContinue?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (btn != QMessageBox::Yes) return;
+    }
+
     bool fmt = m_modeCombo->currentData().toBool();
     int count = 0;
 
