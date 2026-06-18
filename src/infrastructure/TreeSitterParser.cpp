@@ -1,14 +1,11 @@
-// infrastructure/TreeSitterParser.cpp — реализация парсера на tree-sitter-cpp.
-// Весь C-API tree-sitter, RAII-обёртки и обход дерева инкапсулированы здесь.
+// infrastructure/TreeSitterParser.cpp — обобщённый драйвер tree-sitter.
+// C-API tree-sitter и RAII-обёртки инкапсулированы здесь; вся специфика языка
+// (имена типов узлов, extern-связывание) — в LanguageProfile.
 #include "TreeSitterParser.h"
+#include "LanguageProfile.h"
 #include <tree_sitter/api.h>
-#include <cstring>
 #include <stdexcept>
 #include <vector>
-#include <utility>
-
-// C API, экспортируемый из tree-sitter-cpp/src/parser.c (вендорится).
-extern "C" const TSLanguage* tree_sitter_cpp(void);
 
 namespace infrastructure {
 namespace {
@@ -17,8 +14,8 @@ namespace {
 
 class ParserGuard {
 public:
-    ParserGuard() : p_(ts_parser_new()) {
-        if (p_) ts_parser_set_language(p_, tree_sitter_cpp());
+    explicit ParserGuard(const TSLanguage* lang) : p_(ts_parser_new()) {
+        if (p_) ts_parser_set_language(p_, lang);
     }
     ~ParserGuard() { if (p_) ts_parser_delete(p_); }
     ParserGuard(const ParserGuard&) = delete;
@@ -42,8 +39,8 @@ private:
 // Защищённый разбор: парсер + дерево + корень, с проверкой ошибок.
 class ParsedTree {
 public:
-    explicit ParsedTree(const std::string& src)
-        : parser_()
+    ParsedTree(const std::string& src, const TSLanguage* lang)
+        : parser_(lang)
         , tree_(parser_.get()
                 ? ts_parser_parse_string(parser_.get(), nullptr,
                                          src.c_str(),
@@ -63,72 +60,14 @@ private:
     TSNode      root_{};
 };
 
-// --- Вспомогательные функции обхода ---
-
 std::string slice(const std::string& s, TSNode n) {
     uint32_t start = ts_node_start_byte(n);
     return s.substr(start, ts_node_end_byte(n) - start);
 }
 
-constexpr const char* kDeclarator = "declarator";
-const uint32_t kDeclaratorLen = static_cast<uint32_t>(std::strlen(kDeclarator));
-
-// Спускается по цепочке declarator'ов до идентификатора имени декларации.
-TSNode declName(TSNode decl) {
-    TSNode d = ts_node_child_by_field_name(decl, kDeclarator, kDeclaratorLen);
-    while (!ts_node_is_null(d)) {
-        const char* t = ts_node_type(d);
-        if (!std::strcmp(t, "identifier") || !std::strcmp(t, "field_identifier"))
-            return d;
-        TSNode n = ts_node_child_by_field_name(d, kDeclarator, kDeclaratorLen);
-        if (ts_node_is_null(n)) break;
-        d = n;
-    }
-    return d;
-}
-
-// Итеративный DFS: собирает extern-имена (внешнее связывание).
-void collectExtern(TSNode root, const std::string& src,
-                   std::set<std::string>& names) {
-    std::vector<std::pair<TSNode, bool>> stack;
-    stack.push_back({root, false});
-
-    while (!stack.empty()) {
-        auto [node, lk] = stack.back();
-        stack.pop_back();
-
-        const char* t = ts_node_type(node);
-        if (!std::strcmp(t, "linkage_specification")) lk = true;
-        if (!std::strcmp(t, "compound_statement")
-            || !std::strcmp(t, "parameter_list")) lk = false;
-
-        if (!std::strcmp(t, "declaration")) {
-            bool ext = lk;
-            for (uint32_t i = 0, c = ts_node_child_count(node); i < c; ++i) {
-                TSNode ch = ts_node_child(node, i);
-                if (!std::strcmp(ts_node_type(ch), "storage_class_specifier")
-                    && slice(src, ch) == "extern")
-                    ext = true;
-            }
-            if (ext) {
-                TSNode nm = declName(node);
-                if (!ts_node_is_null(nm)) {
-                    const char* nt = ts_node_type(nm);
-                    if (!std::strcmp(nt, "identifier")
-                        || !std::strcmp(nt, "field_identifier"))
-                        names.insert(slice(src, nm));
-                }
-            }
-        }
-
-        uint32_t n = ts_node_child_count(node);
-        for (uint32_t i = n; i > 0; --i)
-            stack.push_back({ts_node_child(node, i - 1), lk});
-    }
-}
-
-// Итеративный DFS: собирает находки (hits).
+// Итеративный DFS: собирает находки (hits), используя классификацию из профиля.
 void collectHits(TSNode root, const std::string& src,
+                 const LanguageProfile& prof,
                  const domain::PreserveList& preserve,
                  std::vector<domain::Hit>& out) {
     using domain::Category;
@@ -139,32 +78,37 @@ void collectHits(TSNode root, const std::string& src,
         TSNode node = stack.back();
         stack.pop_back();
 
-        const char* t = ts_node_type(node);
+        const std::string t = ts_node_type(node);
 
-        if (!std::strcmp(t, "comment")) {
+        if (prof.commentTypes().count(t)) {
             out.push_back({ts_node_start_byte(node), ts_node_end_byte(node),
                            Category::Comment, slice(src, node)});
             continue; // не углубляемся
         }
-        if (!std::strcmp(t, "char_literal")
-            || !std::strcmp(t, "system_lib_string"))
-            continue; // системные <...> и символьные литералы пропускаем
 
-        if (!std::strcmp(t, "string_literal")
-            || !std::strcmp(t, "raw_string_literal")) {
+        if (prof.skipTypes().count(t))
+            continue; // пропускаем целиком (не находка, не обходим вглубь)
+
+        if (prof.stringTypes().count(t)) {
             TSNode p = ts_node_parent(node);
-            const char* pt = ts_node_is_null(p) ? "" : ts_node_type(p);
-            if (!std::strcmp(pt, "linkage_specification")) continue;
-            Category cat = !std::strcmp(pt, "preproc_include")
-                           ? Category::Include : Category::String;
-            out.push_back({ts_node_start_byte(node), ts_node_end_byte(node),
-                           cat, slice(src, node)});
+            const std::string pt = ts_node_is_null(p) ? std::string()
+                                                       : ts_node_type(p);
+            switch (prof.classifyString(pt)) {
+            case LanguageProfile::StringRole::Skip:
+                break;
+            case LanguageProfile::StringRole::Include:
+                out.push_back({ts_node_start_byte(node), ts_node_end_byte(node),
+                               Category::Include, slice(src, node)});
+                break;
+            case LanguageProfile::StringRole::String:
+                out.push_back({ts_node_start_byte(node), ts_node_end_byte(node),
+                               Category::String, slice(src, node)});
+                break;
+            }
             continue; // не углубляемся
         }
 
-        if (!std::strcmp(t, "identifier") || !std::strcmp(t, "type_identifier")
-            || !std::strcmp(t, "namespace_identifier")
-            || !std::strcmp(t, "field_identifier")) {
+        if (prof.identifierTypes().count(t)) {
             std::string x = slice(src, node);
             if (!preserve.contains(x))
                 out.push_back({ts_node_start_byte(node), ts_node_end_byte(node),
@@ -179,14 +123,18 @@ void collectHits(TSNode root, const std::string& src,
 
 } // анонимное пространство имён
 
-TreeSitterParser::TreeSitterParser(domain::PreserveList preserve)
-    : preserve_(std::move(preserve)) {}
+TreeSitterParser::TreeSitterParser(std::shared_ptr<const LanguageProfile> profile,
+                                   domain::PreserveList preserve)
+    : profile_(std::move(profile)), preserve_(std::move(preserve)) {
+    if (!profile_)
+        throw std::runtime_error("TreeSitterParser: null language profile");
+}
 
 domain::ParseOutput TreeSitterParser::parse(const std::string& source) {
-    ParsedTree parsed(source);
+    ParsedTree parsed(source, profile_->tsLanguage());
     domain::ParseOutput out;
-    collectHits(parsed.root(), source, preserve_, out.hits);
-    collectExtern(parsed.root(), source, out.externNames);
+    collectHits(parsed.root(), source, *profile_, preserve_, out.hits);
+    profile_->collectExternNames(parsed.root(), source, out.externNames);
     return out;
 }
 

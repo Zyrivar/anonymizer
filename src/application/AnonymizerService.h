@@ -9,6 +9,8 @@
 #include "application/LeakAuditor.h"
 #include "domain/Policies.h"
 #include "infrastructure/TreeSitterParser.h"
+#include "infrastructure/LanguageProfile.h"
+#include "infrastructure/LanguageProfiles.h"
 #include <memory>
 #include <utility>
 
@@ -16,17 +18,27 @@ namespace application {
 
 class AnonymizerService {
 public:
-    // Конструктор с внешним preserve-списком (DI-шов): список сохраняемых имён
-    // больше не зашит в composition root — его можно задать из GUI, теста или
-    // загрузить из конфига и передать сюда.
-    explicit AnonymizerService(domain::PreserveList preserve)
-        : parser_(std::make_unique<infrastructure::TreeSitterParser>(std::move(preserve)))
+    // Конструктор с внешним preserve-списком и профилем языка (DI-шов): ни список
+    // сохраняемых имён, ни язык больше не зашиты в composition root — их можно
+    // задать из GUI, теста или конфига. Профиль по умолчанию — C++.
+    explicit AnonymizerService(
+        domain::PreserveList preserve,
+        std::shared_ptr<const infrastructure::LanguageProfile> profile
+            = infrastructure::languageProfile("cpp"))
+        : parser_(std::make_unique<infrastructure::TreeSitterParser>(
+              std::move(profile), std::move(preserve)))
         , anonymizer_(*parser_)
         , deanonymizer_(*parser_)
         , auditor_(*parser_)
     {}
 
-    // По умолчанию — встроенный preserve-список (библиотечные/общие имена).
+    // Конструктор по профилю языка: preserve-список берётся из самого профиля
+    // (builtins/stdlib нужного языка). Удобная точка для многоязычной работы.
+    explicit AnonymizerService(
+        std::shared_ptr<const infrastructure::LanguageProfile> profile)
+        : AnonymizerService(profile->defaultPreserveList(), profile) {}
+
+    // По умолчанию — встроенный preserve-список (библиотечные/общие имена) и C++.
     AnonymizerService() : AnonymizerService(domain::PreserveList{}) {}
 
     std::string anonymize(const std::string& src, domain::Dictionary& dict,

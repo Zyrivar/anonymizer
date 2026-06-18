@@ -132,10 +132,14 @@ std::string Anonymizer::run(const std::string& source,
         case Category::Comment: {
             auto it = dict.comments().find(h.text);
             if (it == dict.comments().end()) {
-                bool lineComment = h.text.rfind("//", 0) == 0;
+                // Сохраняем стиль комментария исходного языка по его префиксу,
+                // чтобы анонимизированный текст оставался валидным и при повторном
+                // разборе снова распознавался как комментарий (нужно для round-trip).
                 std::string body = factory_.next(pfx::Comment);
-                std::string ph = lineComment ? ("// " + body)
-                                             : ("/* " + body + " */");
+                std::string ph;
+                if (h.text.rfind("#", 0) == 0)        ph = "# " + body;          // Python/шелл
+                else if (h.text.rfind("//", 0) == 0)  ph = "// " + body;         // C++ строчный
+                else                                  ph = "/* " + body + " */"; // C-блочный
                 dict.comments()[h.text] = ph;
                 replacement = ph;
             } else {

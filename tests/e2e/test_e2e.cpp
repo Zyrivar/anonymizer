@@ -639,6 +639,108 @@ void testGateway() {
             (unsigned)dict.names().size());
 
     // ================================================================
+    // ТЕСТ 11: Python-прототип — анонимизация и round-trip на исходнике Python
+    // ================================================================
+    // Профиль языка выбирается через реестр; preserve-список берётся из самого
+    // профиля Python (builtins/stdlib). Проверяем, что обобщённый парсер и
+    // конвейер работают с другой грамматикой без изменений в ядре.
+    static const char* const PY_SOURCE = R"py(
+# gateway.py — telemetry uploader for plant sensors
+# Author: Ivanov A.V. <ivanov@factory.local>
+import os
+import sys
+import json
+
+API_HOST = "https://telemetry.factory.local/api"
+DEVICE_IP = "10.32.1.100"
+LOG_PATH = "/var/log/telemetry/agent.log"
+
+
+class TelemetryUploader:
+    """Uploads sensor readings to the central server."""
+
+    def __init__(self, endpoint, secret_token):
+        self.endpoint = endpoint
+        self.secret_token = secret_token
+        self.buffer = []
+
+    def add_reading(self, sensor_id, value):
+        # store a single measurement
+        self.buffer.append({"sensor": sensor_id, "value": value})
+
+    def flush(self):
+        payload = json.dumps(self.buffer)
+        print("uploading", len(self.buffer), "readings to", self.endpoint)
+        self.buffer = []
+        return payload
+
+
+def main():
+    uploader = TelemetryUploader(API_HOST, os.environ.get("TOKEN"))
+    for i in range(10):
+        uploader.add_reading("TG-1", i * 1.5)
+    uploader.flush()
+
+
+if __name__ == "__main__":
+    main()
+)py";
+
+    AnonymizerService pySvc(infrastructure::languageProfile("python"));
+    const std::string pySrc(PY_SOURCE);
+    Dictionary pyDict;
+    std::string pyAnon = pySvc.anonymize(pySrc, pyDict);
+
+    // 11a. Точный round-trip на Python-исходнике
+    std::string pyBack = pySvc.restoreCode(pyAnon, pyDict);
+    CHECK(pyBack == pySrc);
+    fprintf(stderr, "  [PASS] Python: round-trip restoreCode(anonymize(src)) == src\n");
+
+    // 11b. Чувствительные данные устранены (имена/строки/комментарии)
+    CHECK(pyAnon.find("TelemetryUploader") == std::string::npos);
+    CHECK(pyAnon.find("secret_token")      == std::string::npos);
+    CHECK(pyAnon.find("telemetry.factory.local") == std::string::npos);
+    CHECK(pyAnon.find("10.32.1.100")       == std::string::npos);
+    CHECK(pyAnon.find("ivanov@factory.local") == std::string::npos);
+    CHECK(pyAnon.find("/var/log/telemetry") == std::string::npos);
+    fprintf(stderr, "  [PASS] Python: sensitive data eliminated\n");
+
+    // 11c. Builtins/stdlib из preserve-списка профиля уцелели
+    CHECK(pyAnon.find("print") != std::string::npos);
+    CHECK(pyAnon.find("range") != std::string::npos);
+    CHECK(pyAnon.find("len")   != std::string::npos);
+    CHECK(pyAnon.find("self")  != std::string::npos);
+    CHECK(pyAnon.find("os")    != std::string::npos);
+    CHECK(pyAnon.find("json")  != std::string::npos);
+    fprintf(stderr, "  [PASS] Python: preserve-list (builtins/stdlib) intact\n");
+
+    // 11d. Ключевые слова Python (анонимные токены грамматики) не трогаются
+    CHECK(pyAnon.find("def ")    != std::string::npos);
+    CHECK(pyAnon.find("class ")  != std::string::npos);
+    CHECK(pyAnon.find("import ") != std::string::npos);
+    CHECK(pyAnon.find("return")  != std::string::npos);
+    fprintf(stderr, "  [PASS] Python: language keywords preserved\n");
+
+    // 11e. Комментарии получили Python-стиль (# CMT_*), а не C-стиль (// или /* */)
+    CHECK(pyAnon.find("# CMT_") != std::string::npos);
+    CHECK(pyAnon.find("// CMT_") == std::string::npos);
+    CHECK(pyAnon.find("/* CMT_") == std::string::npos);
+    fprintf(stderr, "  [PASS] Python: comment placeholders use '#' style\n");
+
+    // 11f. Словарь наполнен
+    CHECK(pyDict.names().size() > 5);
+    CHECK(pyDict.strings().size() > 3);
+    CHECK(pyDict.comments().size() >= 2);
+    fprintf(stderr, "  [PASS] Python: dict populated (names=%u strings=%u comments=%u)\n",
+            (unsigned)pyDict.names().size(),
+            (unsigned)pyDict.strings().size(),
+            (unsigned)pyDict.comments().size());
+
+    // 11g. C++-профиль остаётся изолированным: тот же фасад на C++ не задет
+    CHECK(svc.restoreCode(anon, dict) == src);
+    fprintf(stderr, "  [PASS] Python: C++ profile unaffected (cross-language isolation)\n");
+
+    // ================================================================
     // Итог
     // ================================================================
     fprintf(stderr, "\n=== E2E RESULTS: %d/%d passed ===\n", g_pass, g_run);
