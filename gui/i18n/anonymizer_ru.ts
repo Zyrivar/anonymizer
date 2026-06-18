@@ -190,6 +190,18 @@ format: keep structure, scrub sensitive substrings only</source>
         <translation>Открыть исходник C++</translation>
     </message>
     <message>
+        <source>Open source file</source>
+        <translation>Открыть исходный файл</translation>
+    </message>
+    <message>
+        <source>All source files (%1)</source>
+        <translation>Все исходники (%1)</translation>
+    </message>
+    <message>
+        <source>All files (*)</source>
+        <translation>Все файлы (*)</translation>
+    </message>
+    <message>
         <source>C++ files (*.cpp *.cc *.cxx *.h *.hpp *.hxx *.hh);;All files (*)</source>
         <translation>Файлы C++ (*.cpp *.cc *.cxx *.h *.hpp *.hxx *.hh);;Все файлы (*)</translation>
     </message>
@@ -239,15 +251,21 @@ format: keep structure, scrub sensitive substrings only</source>
     </message>
     <message>
         <source>Processed %1 file(s)
+Languages: %2
 
-Names: %2
-Strings: %3
-Scrub: %4</source>
+Names: %3
+Strings: %4
+Scrub: %5</source>
         <translation>Обработано файлов: %1
+Языки: %2
 
-Имена: %2
-Строки: %3
-Затёрто: %4</translation>
+Имена: %3
+Строки: %4
+Затёрто: %5</translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation>нет</translation>
     </message>
     <message>
         <source>New dictionary created</source>

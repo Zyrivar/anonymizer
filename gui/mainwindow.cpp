@@ -20,6 +20,8 @@
 #include <QLibraryInfo>
 #include <QEvent>
 #include <QSignalBlocker>
+#include <QSet>
+#include <map>
 #include <fstream>
 #include <sstream>
 
@@ -491,8 +493,7 @@ void MainWindow::clipboardDeanon()
 void MainWindow::openFile()
 {
     const QString path = QFileDialog::getOpenFileName(
-        this, tr("Open C++ source"), m_lastOpenDir,
-        tr("C++ files (*.cpp *.cc *.cxx *.h *.hpp *.hxx *.hh);;All files (*)"));
+        this, tr("Open source file"), m_lastOpenDir, sourceOpenFilterString());
     if (path.isEmpty()) return;
 
     m_lastOpenDir = QFileInfo(path).absolutePath();
@@ -503,7 +504,31 @@ void MainWindow::openFile()
         return;
     }
     m_srcEdit->setPlainText(QString::fromUtf8(f.readAll()));
+
+    // Авто-выбор языка исходника по расширению открытого файла.
+    auto prof = infrastructure::languageProfileForExtension(
+        QFileInfo(path).suffix().toStdString());
+    if (prof && QString::fromStdString(prof->id()) != m_sourceLang)
+        setSourceLanguage(QString::fromStdString(prof->id()));
+
     statusBar()->showMessage(tr("Opened: %1").arg(QFileInfo(path).fileName()), 3000);
+}
+
+QString MainWindow::sourceOpenFilterString() const
+{
+    // «Все исходники (*.cpp *.py …)» + группа на язык + «Все файлы».
+    QStringList allPats, groups;
+    for (const auto& p : infrastructure::allLanguageProfiles()) {
+        QStringList pats;
+        for (const auto& e : p->fileExtensions())
+            pats << ("*." + QString::fromStdString(e));
+        allPats += pats;
+        groups << QStringLiteral("%1 (%2)")
+                      .arg(QString::fromStdString(p->displayName()), pats.join(' '));
+    }
+    return tr("All source files (%1)").arg(allPats.join(' '))
+         + ";;" + groups.join(";;")
+         + ";;" + tr("All files (*)");
 }
 
 void MainWindow::saveResult()
@@ -552,16 +577,37 @@ void MainWindow::batchProcess()
     }
 
     bool fmt = m_modeCombo->currentData().toBool();
+    const auto mode = fmt ? application::StringMode::Format
+                          : application::StringMode::Opaque;
     int count = 0;
 
-    // Собираем файлы
-    QDirIterator it(inDir, {"*.cpp","*.cc","*.cxx","*.c++","*.h","*.hpp","*.hxx","*.hh"},
-                    QDir::Files, QDirIterator::Subdirectories);
+    // Маски расширений собираем из всех зарегистрированных языков, чтобы
+    // пакетная обработка брала и C++, и Python (и любой будущий язык).
+    QStringList nameFilters;
+    for (const auto& p : infrastructure::allLanguageProfiles())
+        for (const auto& e : p->fileExtensions())
+            nameFilters << ("*." + QString::fromStdString(e));
+
+    QDirIterator it(inDir, nameFilters, QDir::Files, QDirIterator::Subdirectories);
+
+    // Язык выбирается ПО РАСШИРЕНИЮ каждого файла; сервисы кэшируются по языку.
+    // Все пишут в общий m_dict → один символ получает один ID между языками.
+    std::map<QString, std::unique_ptr<application::AnonymizerService>> services;
+    QSet<QString> langsUsed;
 
     while (it.hasNext()) {
         it.next();
         const QString absPath = it.filePath();
         const QString relPath = QDir(inDir).relativeFilePath(absPath);
+
+        // Профиль по расширению; нераспознанное — пропускаем.
+        auto prof = infrastructure::languageProfileForExtension(
+            QFileInfo(absPath).suffix().toStdString());
+        if (!prof) continue;
+        const QString lang = QString::fromStdString(prof->id());
+        auto& svc = services[lang];
+        if (!svc) svc = std::make_unique<application::AnonymizerService>(prof);
+        langsUsed.insert(lang);
 
         // Читаем исходник
         QFile fin(absPath);
@@ -569,9 +615,8 @@ void MainWindow::batchProcess()
         std::string src = QString::fromUtf8(fin.readAll()).toStdString();
         fin.close();
 
-        // Анонимизируем
-        auto mode = fmt ? application::StringMode::Format : application::StringMode::Opaque;
-        std::string result = m_service->anonymize(src, m_dict, mode);
+        // Анонимизируем сервисом нужного языка
+        std::string result = svc->anonymize(src, m_dict, mode);
 
         // Пишем вывод (сохраняя относительную структуру каталогов)
         const QString outPath = QDir(outDir).filePath(relPath);
@@ -598,10 +643,19 @@ void MainWindow::batchProcess()
     }
     updateDictStats();
 
+    // Список обработанных языков (по их человекочитаемым именам).
+    QStringList langNames;
+    for (const QString& l : langsUsed)
+        if (auto p = infrastructure::languageProfile(l.toStdString()))
+            langNames << QString::fromStdString(p->displayName());
+    langNames.sort();
+
     QMessageBox::information(this, tr("Batch complete"),
-        tr("Processed %1 file(s)\n\n"
-           "Names: %2\nStrings: %3\nScrub: %4")
+        tr("Processed %1 file(s)\n"
+           "Languages: %2\n\n"
+           "Names: %3\nStrings: %4\nScrub: %5")
             .arg(count)
+            .arg(langNames.isEmpty() ? tr("none") : langNames.join(", "))
             .arg(static_cast<int>(m_dict.names().size()))
             .arg(static_cast<int>(m_dict.strings().size()))
             .arg(static_cast<int>(m_dict.scrub().size()))

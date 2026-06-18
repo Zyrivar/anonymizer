@@ -57,6 +57,7 @@ private:
     void setModified(bool m);
     bool ensureDictSaved();
     QString dictFilterString() const;
+    QString sourceOpenFilterString() const;     // фильтр «открыть исходник» из всех языков
 
     // --- Виджеты ---
     QPlainTextEdit* m_srcEdit;      // левая панель: исходник / ввод
