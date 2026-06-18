@@ -10,6 +10,7 @@
 #include <QMenu>
 #include <QToolBar>
 #include <QTranslator>
+#include <memory>
 #include "application/AnonymizerService.h"
 #include "infrastructure/JsonFileDictionaryStore.h"
 
@@ -49,8 +50,9 @@ private:
     void setupToolBar();
     void setupDock();
     void retranslateUi();                       // переустановка всех текстов UI
-    void switchLanguage(const QString& code);   // "ru" / "en"
+    void switchLanguage(const QString& code);   // язык интерфейса: "ru" / "en"
     void applyTranslators(const QString& code); // (раз)установка QTranslator
+    void setSourceLanguage(const QString& id);  // язык исходника: "cpp"/"python"
     void updateDictStats();
     void setModified(bool m);
     bool ensureDictSaved();
@@ -63,6 +65,8 @@ private:
     QLabel*         m_resultLabel;
     QComboBox*      m_modeCombo;    // opaque / format
     QLabel*         m_modeLabel;
+    QComboBox*      m_srcLangCombo; // язык исходника (C++/Python)
+    QLabel*         m_srcLangLabel;
     QLabel*         m_dictStatsLabel;
     QTableWidget*   m_leakTable;
     QDockWidget*    m_leakDock;
@@ -92,9 +96,12 @@ private:
     QTranslator m_qtTranslator;  // переводы стандартных диалогов Qt (qtbase_*)
 
     // --- Состояние ---
-    application::AnonymizerService        m_service;   // фасад use-cases
+    // unique_ptr: при смене языка исходника сервис пересоздаётся с новым профилем
+    // (use-case'ы держат ссылку на парсер, поэтому объект не переприсваивается).
+    std::unique_ptr<application::AnonymizerService> m_service;  // фасад use-cases
     infrastructure::JsonFileDictionaryStore m_store;   // хранилище словаря
     domain::Dictionary                    m_dict;      // доменный словарь
+    QString         m_sourceLang = "cpp";              // язык исходника
     QString         m_dictPath;
     bool            m_dictModified = false;
     QString         m_lastOpenDir;

@@ -12,8 +12,20 @@
         <translation>Результат</translation>
     </message>
     <message>
-        <source>Source C++ code (paste or open file)</source>
-        <translation>Исходный код C++ (вставьте или откройте файл)</translation>
+        <source>Source code (paste or open file)</source>
+        <translation>Исходный код (вставьте или откройте файл)</translation>
+    </message>
+    <message>
+        <source>  Source language: </source>
+        <translation>  Язык исходника: </translation>
+    </message>
+    <message>
+        <source>Programming language of the source code</source>
+        <translation>Язык программирования исходного кода</translation>
+    </message>
+    <message>
+        <source>Source language: %1</source>
+        <translation>Язык исходника: %1</translation>
     </message>
     <message>
         <source>Anonymized / restored output</source>

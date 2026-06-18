@@ -19,6 +19,7 @@
 #include <QSettings>
 #include <QLibraryInfo>
 #include <QEvent>
+#include <QSignalBlocker>
 #include <fstream>
 #include <sstream>
 
@@ -35,10 +36,14 @@ MainWindow::MainWindow(QWidget* parent)
     m_locale = settings.value("ui/language", "ru").toString();
     applyTranslators(m_locale);
 
+    // Язык исходника: сохранённый выбор или C++ по умолчанию.
+    m_sourceLang = settings.value("source/language", "cpp").toString();
+
     setupUi();
     setupMenus();
     setupToolBar();
     setupDock();
+    setSourceLanguage(m_sourceLang);  // создаёт m_service с нужным профилем
     retranslateUi();        // установка всех текстов под текущий язык
     updateDictStats();
 
@@ -206,6 +211,21 @@ void MainWindow::setupToolBar()
 
     m_toolBar->addSeparator();
 
+    // Выбор языка исходника (из реестра профилей)
+    m_srcLangLabel = new QLabel;
+    m_toolBar->addWidget(m_srcLangLabel);
+    m_srcLangCombo = new QComboBox;
+    for (const auto& p : infrastructure::allLanguageProfiles())
+        m_srcLangCombo->addItem(QString::fromStdString(p->displayName()),
+                                QString::fromStdString(p->id()));
+    m_toolBar->addWidget(m_srcLangCombo);
+    connect(m_srcLangCombo, QOverload<int>::of(&QComboBox::activated),
+            this, [this](int) {
+                setSourceLanguage(m_srcLangCombo->currentData().toString());
+            });
+
+    m_toolBar->addSeparator();
+
     // Выбор режима
     m_modeLabel = new QLabel;
     m_toolBar->addWidget(m_modeLabel);
@@ -262,6 +282,33 @@ void MainWindow::switchLanguage(const QString& code)
     retranslateUi();   // немедленно обновляем тексты
 }
 
+void MainWindow::setSourceLanguage(const QString& id)
+{
+    // Профиль из реестра; при неизвестном id откатываемся на C++.
+    auto profile = infrastructure::languageProfile(id.toStdString());
+    if (!profile) profile = infrastructure::languageProfile("cpp");
+
+    m_sourceLang = QString::fromStdString(profile->id());
+    // Сервис пересоздаётся: новый парсер с грамматикой и preserve-листом языка.
+    // Словарь (m_dict) — отдельный член, при смене языка сохраняется.
+    m_service = std::make_unique<application::AnonymizerService>(profile);
+    QSettings().setValue("source/language", m_sourceLang);
+
+    // Синхронизируем комбобокс (без рекурсивного срабатывания сигнала).
+    if (m_srcLangCombo) {
+        int idx = m_srcLangCombo->findData(m_sourceLang);
+        if (idx >= 0 && idx != m_srcLangCombo->currentIndex()) {
+            QSignalBlocker block(m_srcLangCombo);
+            m_srcLangCombo->setCurrentIndex(idx);
+        }
+    }
+
+    if (statusBar())
+        statusBar()->showMessage(
+            tr("Source language: %1")
+                .arg(QString::fromStdString(profile->displayName())), 3000);
+}
+
 void MainWindow::changeEvent(QEvent* e)
 {
     if (e->type() == QEvent::LanguageChange)
@@ -274,7 +321,7 @@ void MainWindow::retranslateUi()
     // --- Центральная область ---
     m_srcLabel->setText(tr("Source"));
     m_resultLabel->setText(tr("Result"));
-    m_srcEdit->setPlaceholderText(tr("Source C++ code (paste or open file)"));
+    m_srcEdit->setPlaceholderText(tr("Source code (paste or open file)"));
     m_resultEdit->setPlaceholderText(tr("Anonymized / restored output"));
 
     // --- Меню File ---
@@ -307,6 +354,8 @@ void MainWindow::retranslateUi()
 
     // --- Тулбар ---
     m_toolBar->setWindowTitle(tr("Operations"));
+    m_srcLangLabel->setText(tr("  Source language: "));
+    m_srcLangCombo->setToolTip(tr("Programming language of the source code"));
     m_actForward->setText(tr("Forward"));
     m_actReverse->setText(tr("Reverse"));
     m_actReverseText->setText(tr("Reverse Text"));
@@ -341,7 +390,7 @@ void MainWindow::doForward()
 
     bool fmt = m_modeCombo->currentData().toBool();
     auto mode = fmt ? application::StringMode::Format : application::StringMode::Opaque;
-    std::string result = m_service.anonymize(src, m_dict, mode);
+    std::string result = m_service->anonymize(src, m_dict, mode);
     m_resultEdit->setPlainText(QString::fromStdString(result));
     setModified(true);
     updateDictStats();
@@ -356,7 +405,7 @@ void MainWindow::doReverse()
         statusBar()->showMessage(tr("Source is empty"), 3000);
         return;
     }
-    std::string result = m_service.restoreCode(src, m_dict);
+    std::string result = m_service->restoreCode(src, m_dict);
     m_resultEdit->setPlainText(QString::fromStdString(result));
     statusBar()->showMessage(tr("Reverse done"), 3000);
 }
@@ -368,7 +417,7 @@ void MainWindow::doReverseText()
         statusBar()->showMessage(tr("Source is empty"), 3000);
         return;
     }
-    std::string result = m_service.restoreText(src, m_dict);
+    std::string result = m_service->restoreText(src, m_dict);
     m_resultEdit->setPlainText(QString::fromStdString(result));
     statusBar()->showMessage(tr("Reverse-text done"), 3000);
 }
@@ -381,7 +430,7 @@ void MainWindow::doLeakScan()
         return;
     }
 
-    auto leaks = m_service.audit(src);
+    auto leaks = m_service->audit(src);
 
     m_leakTable->setRowCount(0);
     m_leakTable->setRowCount(static_cast<int>(leaks.size()));
@@ -414,7 +463,7 @@ void MainWindow::clipboardAnon()
 
     bool fmt = m_modeCombo->currentData().toBool();
     auto mode = fmt ? application::StringMode::Format : application::StringMode::Opaque;
-    std::string result = m_service.anonymize(text, m_dict, mode);
+    std::string result = m_service->anonymize(text, m_dict, mode);
     cb->setText(QString::fromStdString(result));
     setModified(true);
     updateDictStats();
@@ -430,7 +479,7 @@ void MainWindow::clipboardDeanon()
         return;
     }
 
-    std::string result = m_service.restoreText(text, m_dict);
+    std::string result = m_service->restoreText(text, m_dict);
     cb->setText(QString::fromStdString(result));
     statusBar()->showMessage(tr("Clipboard deanonymized"), 3000);
 }
@@ -522,7 +571,7 @@ void MainWindow::batchProcess()
 
         // Анонимизируем
         auto mode = fmt ? application::StringMode::Format : application::StringMode::Opaque;
-        std::string result = m_service.anonymize(src, m_dict, mode);
+        std::string result = m_service->anonymize(src, m_dict, mode);
 
         // Пишем вывод (сохраняя относительную структуру каталогов)
         const QString outPath = QDir(outDir).filePath(relPath);
