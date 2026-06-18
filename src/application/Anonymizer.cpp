@@ -103,13 +103,18 @@ std::string Anonymizer::run(const std::string& source,
             }
             break;
         }
-        case Category::String: {
+        case Category::String:
+        case Category::StringFragment: {
+            // Фрагмент f-string заменяется «на месте» без кавычек; в format-режиме
+            // обработка совпадает с обычной строкой (scrubString и так bare).
+            const bool fragment = (h.category == Category::StringFragment);
             if (mode == StringMode::Format) {
                 replacement = scrubString(h.text, dict);
             } else {
                 auto it = dict.strings().find(h.text);
                 if (it == dict.strings().end()) {
-                    std::string ph = "\"" + factory_.next(pfx::String) + "\"";
+                    std::string body = factory_.next(pfx::String);
+                    std::string ph = fragment ? body : ("\"" + body + "\"");
                     dict.strings()[h.text] = ph;
                     replacement = ph;
                 } else {

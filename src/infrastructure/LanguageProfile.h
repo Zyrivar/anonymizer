@@ -56,6 +56,22 @@ public:
     enum class StringRole { String, Include, Skip };
     virtual StringRole classifyString(const std::string& parentType) const = 0;
 
+    // Нужно ли «зайти внутрь» строкового узла вместо непрозрачной замены целиком.
+    // По умолчанию нет. Языки с интерполяцией (Python f-string, JS template
+    // literal) переопределяют: возвращают true для строк, где текстовые сегменты
+    // и выражения интерполяции нужно обрабатывать раздельно — иначе имена внутри
+    // {…} либо утекают, либо ломаются скраб-регэкспами в format-режиме.
+    virtual bool descendIntoString(TSNode /*node*/, const std::string& /*src*/) const {
+        return false;
+    }
+
+    // Типы узлов — текстовые сегменты внутри интерполированной строки.
+    // Заменяются «на месте» без кавычек (Category::StringFragment).
+    virtual const std::set<std::string>& stringFragmentTypes() const {
+        static const std::set<std::string> empty;
+        return empty;
+    }
+
     // Сбор имён с внешним связыванием (extern "C" и т.п.) — они помечаются в
     // словаре как extern. Понятие структурно зависит от языка; для языков без
     // него реализация по умолчанию ничего не добавляет.

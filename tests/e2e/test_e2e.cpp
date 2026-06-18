@@ -741,6 +741,93 @@ if __name__ == "__main__":
     fprintf(stderr, "  [PASS] Python: C++ profile unaffected (cross-language isolation)\n");
 
     // ================================================================
+    // ТЕСТ 12: Python production-конструкции — f-strings, async, декораторы,
+    // comprehensions, match, исключения. Главное — безопасность f-строк:
+    // имена внутри {…} должны анонимизироваться (а не утекать) в ОБОИХ режимах,
+    // а скраб не должен ломать обращения к атрибутам.
+    // ================================================================
+    static const char* const PY_PROD = R"py(
+import logging
+from dataclasses import dataclass
+
+audit = logging.getLogger(__name__)
+
+
+@dataclass
+class ShipmentRouter:
+    secret_host: str
+    secret_port: int
+    session_marker: str = "init"
+
+    async def deliver(self, secret_token, payloads):
+        audit.info(f"connecting to {self.secret_host}:{self.secret_port}")
+        endpoint = f"https://{self.secret_host}/v1/{secret_token[:8]}"
+        labels = [f"{self.session_marker}#{p}" for p in payloads if p > 0]
+        try:
+            return f"{endpoint} -> {len(labels)} labels"
+        except TimeoutError as exc:
+            audit.warning(f"timeout {exc!r} on {self.secret_host}")
+            raise
+
+    def route(self, command):
+        match command:
+            case "flush":
+                return f"flushing {self.session_marker}"
+            case _:
+                raise ValueError(f"bad command: {command}")
+)py";
+
+    AnonymizerService prod(infrastructure::languageProfile("python"));
+    const std::string prodSrc(PY_PROD);
+
+    // Проприетарные имена/данные, которых НЕ должно быть в выводе ни в одном режиме.
+    const char* secrets[] = {
+        "ShipmentRouter", "secret_host", "secret_port", "secret_token",
+        "session_marker", "deliver", "payloads",
+    };
+
+    // 12a/12b. Round-trip в обоих режимах + отсутствие утечек.
+    for (int m = 0; m < 2; ++m) {
+        auto mode = m ? StringMode::Format : StringMode::Opaque;
+        const char* modeName = m ? "format" : "opaque";
+        Dictionary d;
+        std::string a = prod.anonymize(prodSrc, d, mode);
+
+        CHECK(prod.restoreCode(a, d) == prodSrc);                 // точный round-trip
+        bool leak = false;
+        for (const char* s : secrets)
+            if (a.find(s) != std::string::npos) {
+                fprintf(stderr, "  LEAK (%s): %s\n", modeName, s);
+                leak = true;
+            }
+        CHECK(!leak);
+        CHECK(a.find("f\"") != std::string::npos);                // f-строки остались f-строками
+        fprintf(stderr, "  [PASS] Python prod (%s): round-trip OK, no identifier leak\n", modeName);
+    }
+
+    // 12c. Ключевой фикс: в format-режиме обращение к атрибуту внутри f-string
+    // не ломается скрабом (self.secret_host НЕ превращается в {HOST_*}).
+    {
+        Dictionary d;
+        std::string a = prod.anonymize(prodSrc, d, StringMode::Format);
+        CHECK(a.find("HOST_") == std::string::npos);   // host-скраб не сработал по коду
+        CHECK(a.find("self.") != std::string::npos);   // обращения к атрибутам целы
+        fprintf(stderr, "  [PASS] Python prod (format): attribute access in f-strings intact\n");
+    }
+
+    // 12d. Расширенный preserve-список: builtins/исключения/декораторы/typing.
+    {
+        Dictionary d;
+        std::string a = prod.anonymize(prodSrc, d, StringMode::Opaque);
+        CHECK(a.find("@dataclass")  != std::string::npos);
+        CHECK(a.find("TimeoutError") != std::string::npos);
+        CHECK(a.find("ValueError")  != std::string::npos);
+        CHECK(a.find("len(")        != std::string::npos);
+        CHECK(a.find("logging")     != std::string::npos);
+        fprintf(stderr, "  [PASS] Python prod: extended preserve-list (builtins/exc/decorators)\n");
+    }
+
+    // ================================================================
     // Итог
     // ================================================================
     fprintf(stderr, "\n=== E2E RESULTS: %d/%d passed ===\n", g_pass, g_run);

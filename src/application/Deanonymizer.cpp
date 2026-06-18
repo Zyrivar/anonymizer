@@ -39,6 +39,7 @@ std::string Deanonymizer::restoreTokens(const std::string& source,
         const std::map<std::string, std::string>* m =
               h.category == Category::Name    ? &invNames
             : h.category == Category::String  ? &invStrings
+            : h.category == Category::StringFragment ? &invStrings
             : h.category == Category::Comment ? &invComments
             :                                   &invIncludes;
         auto it = m->find(h.text);
@@ -59,9 +60,13 @@ std::string Deanonymizer::restoreText(const std::string& text,
     std::string out = text;
 
     // Сначала восстанавливаем «обёрнутые» формы (строки, комментарии, инклуды),
-    // т.к. их плейсхолдеры содержат кавычки/слэши.
+    // т.к. их плейсхолдеры содержат кавычки/слэши. Bare-фрагменты f-string
+    // (плейсхолдер без кавычек) сюда не входят — их безопаснее восстанавливать
+    // через regex с границами слов (ниже), чтобы не задеть префиксы.
     // TODO: O(N*M) на проход — для больших словарей рассмотреть Aho-Corasick.
-    for (const auto& [orig, v] : dict.strings())  replaceAll(out, v, orig);
+    for (const auto& [orig, v] : dict.strings())
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
+            replaceAll(out, v, orig);
     for (const auto& [orig, v] : dict.comments()) replaceAll(out, v, orig);
     for (const auto& [orig, v] : dict.includes()) replaceAll(out, v, orig);
 
@@ -70,8 +75,12 @@ std::string Deanonymizer::restoreText(const std::string& text,
     for (const auto& [orig, e] : dict.names())
         bare[e.placeholder] = orig;
     for (const auto& [orig, v] : dict.strings()) {
-        // v == "\"STR_0001\"" → голый "STR_0001"
-        if (v.size() >= 2) bare[v.substr(1, v.size() - 2)] = orig;
+        // Обычная строка: v == "\"STR_0001\"" → голый STR_0001.
+        // Фрагмент f-string: v == "STR_0001" (уже голый).
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
+            bare[v.substr(1, v.size() - 2)] = orig;
+        else
+            bare[v] = orig;
     }
     static const std::regex reCmt("CMT_[0-9]{4,}");
     static const std::regex reHdr("HDR_[0-9]{4,}");

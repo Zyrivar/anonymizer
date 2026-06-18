@@ -21,6 +21,11 @@ public:
 
     StringRole classifyString(const std::string& parentType) const override;
 
+    // f-string обрабатывается посегментно: текст → StringFragment, выражения
+    // {…} → обычные имена. Иначе имена внутри {…} утекают / ломаются скрабом.
+    bool descendIntoString(TSNode node, const std::string& src) const override;
+    const std::set<std::string>& stringFragmentTypes() const override;
+
     // collectExternNames наследует пустую реализацию базы: в Python нет
     // понятия внешнего связывания (extern).
 };

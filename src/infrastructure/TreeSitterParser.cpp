@@ -90,6 +90,15 @@ void collectHits(TSNode root, const std::string& src,
             continue; // пропускаем целиком (не находка, не обходим вглубь)
 
         if (prof.stringTypes().count(t)) {
+            // Интерполированная строка (f-string) — заходим внутрь: текстовые
+            // сегменты и выражения {…} обработают дочерние узлы (см. push ниже).
+            if (prof.descendIntoString(node, src)) {
+                uint32_t n = ts_node_child_count(node);
+                for (uint32_t i = n; i > 0; --i)
+                    stack.push_back(ts_node_child(node, i - 1));
+                continue;
+            }
+            // Иначе — непрозрачная замена строки целиком.
             TSNode p = ts_node_parent(node);
             const std::string pt = ts_node_is_null(p) ? std::string()
                                                        : ts_node_type(p);
@@ -106,6 +115,13 @@ void collectHits(TSNode root, const std::string& src,
                 break;
             }
             continue; // не углубляемся
+        }
+
+        // Текстовый сегмент внутри f-string — замена «на месте», без кавычек.
+        if (prof.stringFragmentTypes().count(t)) {
+            out.push_back({ts_node_start_byte(node), ts_node_end_byte(node),
+                           Category::StringFragment, slice(src, node)});
+            continue;
         }
 
         if (prof.identifierTypes().count(t)) {
